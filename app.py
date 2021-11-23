@@ -9,7 +9,7 @@ import json
 import sqlite3
 @app.route("/api/v1/info")
 def home_index():
-    conn = sqlite3.connect('mydb.db')
+    conn = sqlite3.connect('database.sqlite')
     print ("Opened database successfully");
     api_list=[]
     cursor = conn.execute("SELECT buildtime, version, methods, links from apirelease")
@@ -20,5 +20,29 @@ def home_index():
         a_dict['methods'] = row[2]
         a_dict['links'] = row[3]
         api_list.append(a_dict)
+        
     conn.close()
     return jsonify({'api_version': api_list}), 200
+
+
+@app.route('/api/v1/users', methods=['GET'])
+def get_users():
+    return list_users()
+
+def list_users():
+    conn = sqlite3.connect('database.sqlite')
+    print ("Opened database successfully");
+    api_list=[]
+    cursor = conn.execute("SELECT username, full_name, email, password, id from users")
+
+    for row in cursor:
+        a_dict = {}
+        a_dict['username'] = row[0]
+        a_dict['name'] = row[1]
+        a_dict['email'] = row[2]
+        a_dict['password'] = row[3]
+        a_dict['id'] = row[4]
+        api_list.append(a_dict)
+
+    conn.close()
+    return jsonify({'user_list': api_list})
