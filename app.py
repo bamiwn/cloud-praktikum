@@ -61,6 +61,105 @@ def create_mongodatabase():
 
 
 
+# API ROUTE
+@app.route('/')
+def home():
+    if not session.get('logged_in'):
+        return render_template('login.html')
+    else:
+        return render_template('index.html', session = session['username'])
+
+@app.route('/index')
+def index():
+    return render_template('index.html')
+
+
+@app.route('/login', methods=['POST'])
+def do_admin_login():
+    users = mongo.db.users
+    api_list=[]
+    login_user = users.find({'username': request.form['username']})
+    for i in login_user:
+        api_list.append(i)
+    print (api_list)
+    if api_list != []:
+        # print (api_list[0]['password'].decode('utf-8'), bcrypt.hashpw(request.form['password'].encode('utf-8'), api_list[0]['password']).decode('utf-8'))
+        if api_list[0]['password'].decode('utf-8') == bcrypt.hashpw(request.form['password'].encode('utf-8'), api_list[0]['password']).decode('utf-8'):
+            session['logged_in'] = api_list[0]['username']
+            return redirect(url_for('index'))
+        return 'Invalide username/password!'
+    else:
+        flash("Invalid Authentication")
+
+    return 'Invalid User!'
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method=='POST':
+        users = mongo.db.users
+        api_list=[]
+        existing_user = users.find({'$or':[{"username":request.form['username']} ,{"email":request.form['email']}]})
+        for i in existing_user:
+            # print (str(i))
+            api_list.append(str(i))
+
+        # print (api_list)
+        if api_list == []:
+            users.insert({
+                "email": request.form['email'],
+                "id": random.randint(1,1000),
+                "name": request.form['name'],
+                "password": bcrypt.hashpw(request.form['pass'].encode('utf-8'), bcrypt.gensalt()),
+                "username": request.form['username']
+            })
+            session['username'] = request.form['username']
+            return redirect(url_for('home'))
+
+        return 'That user already exists'
+    else :
+        return render_template('signup.html')
+
+
+
+
+@app.route("/logout")
+def logout():
+    session['logged_in'] = False
+    return redirect(url_for('home'))
+
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    if request.method=='POST':
+        users = mongo.db.users
+        api_list=[]
+        existing_users = users.find({"username":session['username']})
+        for i in existing_users:
+            # print (str(i))
+            api_list.append(str(i))
+        user = {}
+        print (api_list)
+        if api_list != []:
+            print (request.form['email'])
+            user['email']=request.form['email']
+            user['name']= request.form['name']
+            user['password']=request.form['pass']
+            users.update({'username':session['username']},{'$set': user} )
+        else:
+            return 'User not found!'
+        return redirect(url_for('index'))
+    if request.method=='GET':
+        users = mongo.db.users
+        user=[]
+        print (session['username'])
+        existing_user = users.find({"username":session['username']})
+        for i in existing_user:
+            user.append(i)
+        return render_template('profile.html', name=user[0]['name'], username=user[0]['username'], password=user[0]['password'], email=user[0]['email'])
+
+
+
+
+
 @app.route('/')
 def main():
     return render_template('main.html')
@@ -332,26 +431,34 @@ def get_tweets():
   return list_tweets()
 
 def list_tweets():
-    conn = sqlite3.connect('mydb.db')
-    print ("Opened database successfully");
-    api_list=[]
-    cursor=conn.cursor()
-    cursor.execute("SELECT username, body, tweet_time, id from tweets")
-    data = cursor.fetchall()
 
-    if data != 0:
-        for row in data:
-            tweets = {}
-            tweets['Tweet by'] = row[0]
-            tweets['Body'] = row[1]
-            tweets['Timestamp'] = row[2]
-            tweets['id'] = row[3]
-            api_list.append(tweets)
-    else:
-        return api_list
-        
-    conn.close()
+    api_list=[]
+    db = connection.cloud_native.tweets
+    for row in db.find():
+        api_list.append(str(row))
+    # print (api_list)
     return jsonify({'tweets_list': api_list})
+    # conn = sqlite3.connect('mydb.db')
+    # print ("Opened database successfully");
+    # api_list=[]
+    # cursor=conn.cursor()
+    # cursor.execute("SELECT username, body, tweet_time, id from tweets")
+    # data = cursor.fetchall()
+
+    # if data != 0:
+    #     for row in data:
+    #         tweets = {}
+    #         tweets['Tweet by'] = row[0]
+    #         tweets['Body'] = row[1]
+    #         tweets['Timestamp'] = row[2]
+    #         tweets['id'] = row[3]
+    #         api_list.append(tweets)
+    # else:
+    #     return api_list
+        
+    # conn.close()
+    # return jsonify({'tweets_list': api_list})
+    
 
 
 @app.route('/api/v2/tweets', methods=['POST'])
@@ -366,19 +473,32 @@ def add_tweets():
     return  jsonify({'status': add_tweet(user_tweet)}), 201
 
 def add_tweet(new_tweets):
-    conn = sqlite3.connect('mydb.db')
-    print ("Opened database successfully");
-    cursor=conn.cursor()
-    cursor.execute("SELECT * from users where username=? ",(new_tweets['username'],))
-    data = cursor.fetchall()
+    api_list=[]
+    print (new_tweet)
+    db_user = connection.cloud_native.users
+    db_tweet = connection.cloud_native.tweets
 
-    if len(data) == 0:
-        abort(404)
+    user = db_user.find({"username":new_tweet['tweetedby']})
+    for i in user:
+        api_list.append(str(i))
+    if api_list == []:
+       abort(404)
     else:
-       cursor.execute("INSERT into tweets (username, body, tweet_time) values(?,?,?)",(new_tweets['username'],new_tweets['body'], new_tweets['created_at']))
+        db_tweet.insert_one(new_tweet)
+        return "Success"
+    # conn = sqlite3.connect('mydb.db')
+    # print ("Opened database successfully");
+    # cursor=conn.cursor()
+    # cursor.execute("SELECT * from users where username=? ",(new_tweets['username'],))
+    # data = cursor.fetchall()
+
+    # if len(data) == 0:
+    #     abort(404)
+    # else:
+    #    cursor.execute("INSERT into tweets (username, body, tweet_time) values(?,?,?)",(new_tweets['username'],new_tweets['body'], new_tweets['created_at']))
     
-    conn.commit()
-    return "Success"
+    # conn.commit()
+    # return "Success"
 
 @app.route('/api/v2/tweets/<int:id>', methods=['GET'])
 def get_tweet(id):
@@ -386,25 +506,34 @@ def get_tweet(id):
 
 def list_tweet(user_id):
     print (user_id)
-    conn = sqlite3.connect('mydb.db')
-    print ("Opened database successfully");
+    db = connection.cloud_native.tweets
     api_list=[]
-    cursor=conn.cursor()
-    cursor.execute("SELECT * from tweets  where id=?",(user_id,))
-    data = cursor.fetchall()
-    print (data)
-    if len(data) == 0:
+    tweet = db.find({'id':user_id})
+    for i in tweet:
+        api_list.append(str(i))
+    if api_list == []:
         abort(404)
-    else:
+    return jsonify({'tweet': api_list})
+    # print (user_id)
+    # conn = sqlite3.connect('mydb.db')
+    # print ("Opened database successfully");
+    # api_list=[]
+    # cursor=conn.cursor()
+    # cursor.execute("SELECT * from tweets  where id=?",(user_id,))
+    # data = cursor.fetchall()
+    # print (data)
+    # if len(data) == 0:
+    #     abort(404)
+    # else:
 
-        user = {}
-        user['id'] = data[0][0]
-        user['username'] = data[0][1]
-        user['body'] = data[0][2]
-        user['tweet_time'] = data[0][3]
+    #     user = {}
+    #     user['id'] = data[0][0]
+    #     user['username'] = data[0][1]
+    #     user['body'] = data[0][2]
+    #     user['tweet_time'] = data[0][3]
 
-    conn.close()
-    return jsonify(user)
+    # conn.close()
+    # return jsonify(user)
 
 if __name__ == "__main__":
     create_mongodatabase()
